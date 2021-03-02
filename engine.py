@@ -16,15 +16,23 @@ from losses import DistillationLoss
 import utils
 
 
-def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
-                    data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
-                    model_ema: Optional[ModelEma] = None, mixup_fn: Optional[Mixup] = None,
-                    set_training_mode=True):
+def train_one_epoch(
+    model: torch.nn.Module,
+    criterion: DistillationLoss,
+    data_loader: Iterable,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    epoch: int,
+    loss_scaler,
+    max_norm: float = 0,
+    model_ema: Optional[ModelEma] = None,
+    mixup_fn: Optional[Mixup] = None,
+    set_training_mode=True,
+):
     model.train(set_training_mode)
     metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
-    header = 'Epoch: [{}]'.format(epoch)
+    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
+    header = "Epoch: [{}]".format(epoch)
     print_freq = 10
 
     for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
@@ -47,9 +55,16 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
         optimizer.zero_grad()
 
         # this attribute is added by timm on one optimizer (adahessian)
-        is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
-        loss_scaler(loss, optimizer, clip_grad=max_norm,
-                    parameters=model.parameters(), create_graph=is_second_order)
+        is_second_order = (
+            hasattr(optimizer, "is_second_order") and optimizer.is_second_order
+        )
+        loss_scaler(
+            loss,
+            optimizer,
+            clip_grad=max_norm,
+            parameters=model.parameters(),
+            create_graph=is_second_order,
+        )
 
         torch.cuda.synchronize()
         if model_ema is not None:
@@ -68,7 +83,7 @@ def evaluate(data_loader, model, device):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
-    header = 'Test:'
+    header = "Test:"
 
     # switch to evaluation mode
     model.eval()
@@ -86,11 +101,14 @@ def evaluate(data_loader, model, device):
 
         batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
-        metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+        metric_logger.meters["acc1"].update(acc1.item(), n=batch_size)
+        metric_logger.meters["acc5"].update(acc5.item(), n=batch_size)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+    print(
+        "* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}".format(
+            top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss
+        )
+    )
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}

@@ -14,16 +14,32 @@ import submitit
 
 def parse_args():
     classification_parser = classification.get_args_parser()
-    parser = argparse.ArgumentParser("Submitit for DeiT", parents=[classification_parser])
-    parser.add_argument("--ngpus", default=8, type=int, help="Number of gpus to request on each node")
-    parser.add_argument("--nodes", default=2, type=int, help="Number of nodes to request")
+    parser = argparse.ArgumentParser(
+        "Submitit for DeiT", parents=[classification_parser]
+    )
+    parser.add_argument(
+        "--ngpus", default=8, type=int, help="Number of gpus to request on each node"
+    )
+    parser.add_argument(
+        "--nodes", default=2, type=int, help="Number of nodes to request"
+    )
     parser.add_argument("--timeout", default=2800, type=int, help="Duration of the job")
-    parser.add_argument("--job_dir", default="", type=str, help="Job dir. Leave empty for automatic.")
+    parser.add_argument(
+        "--job_dir", default="", type=str, help="Job dir. Leave empty for automatic."
+    )
 
-    parser.add_argument("--partition", default="learnfair", type=str, help="Partition where to submit")
-    parser.add_argument("--use_volta32", action='store_true', help="Big models? Use this")
-    parser.add_argument('--comment', default="", type=str,
-                        help='Comment to pass to scheduler, e.g. priority message')
+    parser.add_argument(
+        "--partition", default="learnfair", type=str, help="Partition where to submit"
+    )
+    parser.add_argument(
+        "--use_volta32", action="store_true", help="Big models? Use this"
+    )
+    parser.add_argument(
+        "--comment",
+        default="",
+        type=str,
+        help="Comment to pass to scheduler, e.g. priority message",
+    )
     return parser.parse_args()
 
 
@@ -72,7 +88,9 @@ class Trainer(object):
         from pathlib import Path
 
         job_env = submitit.JobEnvironment()
-        self.args.output_dir = Path(str(self.args.output_dir).replace("%j", str(job_env.job_id)))
+        self.args.output_dir = Path(
+            str(self.args.output_dir).replace("%j", str(job_env.job_id))
+        )
         self.args.gpu = job_env.local_rank
         self.args.rank = job_env.global_rank
         self.args.world_size = job_env.num_tasks
@@ -94,9 +112,9 @@ def main():
     partition = args.partition
     kwargs = {}
     if args.use_volta32:
-        kwargs['slurm_constraint'] = 'volta32gb'
+        kwargs["slurm_constraint"] = "volta32gb"
     if args.comment:
-        kwargs['slurm_comment'] = args.comment
+        kwargs["slurm_comment"] = args.comment
 
     executor.update_parameters(
         mem_gb=40 * num_gpus_per_node,
@@ -108,7 +126,7 @@ def main():
         # Below are cluster dependent parameters
         slurm_partition=partition,
         slurm_signal_delay_s=120,
-        **kwargs
+        **kwargs,
     )
 
     executor.update_parameters(name="deit")
