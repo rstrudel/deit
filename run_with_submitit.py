@@ -18,18 +18,18 @@ def parse_args():
         "Submitit for DeiT", parents=[classification_parser]
     )
     parser.add_argument(
-        "--ngpus", default=8, type=int, help="Number of gpus to request on each node"
+        "--ngpus", default=4, type=int, help="Number of gpus to request on each node"
     )
     parser.add_argument(
-        "--nodes", default=2, type=int, help="Number of nodes to request"
+        "--nodes", default=4, type=int, help="Number of nodes to request"
     )
-    parser.add_argument("--timeout", default=2800, type=int, help="Duration of the job")
+    parser.add_argument("--timeout", default=1200, type=int, help="Duration of the job")
     parser.add_argument(
         "--job_dir", default="", type=str, help="Job dir. Leave empty for automatic."
     )
 
     parser.add_argument(
-        "--partition", default="learnfair", type=str, help="Partition where to submit"
+        "--partition", default="", type=str, help="Partition where to submit"
     )
     parser.add_argument(
         "--use_volta32", action="store_true", help="Big models? Use this"
@@ -45,8 +45,8 @@ def parse_args():
 
 def get_shared_folder() -> Path:
     user = os.getenv("USER")
-    if Path("/checkpoint/").is_dir():
-        p = Path(f"/checkpoint/{user}/experiments")
+    p = Path(os.path.expandvars("$WORK")) / "deit_models"
+    if p.is_dir():
         p.mkdir(exist_ok=True)
         return p
     raise RuntimeError("No shared folder available")
@@ -112,7 +112,7 @@ def main():
     partition = args.partition
     kwargs = {}
     if args.use_volta32:
-        kwargs["slurm_constraint"] = "volta32gb"
+        kwargs["slurm_constraint"] = "v100-32g"
     if args.comment:
         kwargs["slurm_comment"] = args.comment
 
