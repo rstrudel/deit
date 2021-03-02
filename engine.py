@@ -6,6 +6,7 @@ Train and eval functions used in main.py
 import math
 import sys
 from typing import Iterable, Optional
+from contextlib import suppress
 
 import torch
 
@@ -28,6 +29,7 @@ def train_one_epoch(
     model_ema: Optional[ModelEma] = None,
     mixup_fn: Optional[Mixup] = None,
     set_training_mode=True,
+    amp_autocast=suppress,
 ):
     model.train(set_training_mode)
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -42,7 +44,7 @@ def train_one_epoch(
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
 
-        with torch.cuda.amp.autocast():
+        with amp_autocast():
             outputs = model(samples)
             loss = criterion(samples, outputs, targets)
 
@@ -58,13 +60,17 @@ def train_one_epoch(
         is_second_order = (
             hasattr(optimizer, "is_second_order") and optimizer.is_second_order
         )
-        loss_scaler(
-            loss,
-            optimizer,
-            clip_grad=max_norm,
-            parameters=model.parameters(),
-            create_graph=is_second_order,
-        )
+        if loss_scaler is not None:
+            loss_scaler(
+                loss,
+                optimizer,
+                clip_grad=max_norm,
+                parameters=model.parameters(),
+                create_graph=is_second_order,
+            )
+        else:
+            loss.backward()
+            optimizer.step()
 
         torch.cuda.synchronize()
         if model_ema is not None:
@@ -79,7 +85,7 @@ def train_one_epoch(
 
 
 @torch.no_grad()
-def evaluate(data_loader, model, device):
+def evaluate(data_loader, model, device, amp_autocast):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -93,7 +99,7 @@ def evaluate(data_loader, model, device):
         target = target.to(device, non_blocking=True)
 
         # compute output
-        with torch.cuda.amp.autocast():
+        with amp_autocast():
             output = model(images)
             loss = criterion(output, target)
 

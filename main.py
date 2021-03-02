@@ -7,6 +7,7 @@ import time
 import torch
 import torch.backends.cudnn as cudnn
 import json
+from contextlib import suppress
 
 from pathlib import Path
 
@@ -193,6 +194,9 @@ def get_args_parser():
         metavar="RATE",
         help="LR decay rate (default: 0.1)",
     )
+    parser.add_argument("--amp", action="store_true")
+    parser.add_argument("--no-amp", action="store_false", dest="amp")
+    parser.set_defaults(amp=True)
 
     # Augmentation parameters
     parser.add_argument(
@@ -512,6 +516,22 @@ def main(args):
 
     model.to(device)
 
+    # optimizer and scheduler
+    linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
+    args.lr = linear_scaled_lr
+    optimizer = create_optimizer(args, model)
+    lr_scheduler, _ = create_scheduler(args, optimizer)
+    criterion = LabelSmoothingCrossEntropy()
+
+    if args.amp:
+        amp_autocast = torch.cuda.amp.autocast
+        loss_scaler = NativeScaler()
+        print("AMP training.")
+    else:
+        amp_autocast = suppress
+        loss_scaler = None
+        print("Full precision training.")
+
     model_ema = None
     if args.model_ema:
         # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
@@ -528,15 +548,6 @@ def main(args):
         model_without_ddp = model.module
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print("number of params:", n_parameters)
-
-    linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
-    args.lr = linear_scaled_lr
-    optimizer = create_optimizer(args, model_without_ddp)
-    loss_scaler = NativeScaler()
-
-    lr_scheduler, _ = create_scheduler(args, optimizer)
-
-    criterion = LabelSmoothingCrossEntropy()
 
     if args.mixup > 0.0:
         # smoothing is handled with mixup label transform
@@ -596,11 +607,11 @@ def main(args):
             args.start_epoch = checkpoint["epoch"] + 1
             if args.model_ema:
                 utils._load_checkpoint_for_ema(model_ema, checkpoint["model_ema"])
-            if "scaler" in checkpoint:
+            if args.amp and "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
 
     if args.eval:
-        test_stats = evaluate(data_loader_val, model, device)
+        test_stats = evaluate(data_loader_val, model, device, amp_autocast)
         print(
             f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
         )
@@ -626,42 +637,43 @@ def main(args):
             mixup_fn,
             set_training_mode=args.finetune
             == "",  # keep in eval mode during finetuning
+            amp_autocast=amp_autocast,
         )
 
         lr_scheduler.step(epoch)
         if args.output_dir:
             checkpoint_paths = [output_dir / "checkpoint.pth"]
             for checkpoint_path in checkpoint_paths:
-                utils.save_on_master(
-                    {
-                        "model": model_without_ddp.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                        "lr_scheduler": lr_scheduler.state_dict(),
-                        "epoch": epoch,
-                        "model_ema": get_state_dict(model_ema),
-                        "scaler": loss_scaler.state_dict(),
-                        "args": args,
-                    },
-                    checkpoint_path,
-                )
+                checkpoint = {
+                    "model": model_without_ddp.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "lr_scheduler": lr_scheduler.state_dict(),
+                    "epoch": epoch,
+                    "model_ema": get_state_dict(model_ema),
+                    "args": args,
+                }
+                if loss_scaler is not None:
+                    checkpoint["scaler"] = loss_scaler.state_dict()
+                utils.save_on_master(checkpoint, checkpoint_path)
 
-        test_stats = evaluate(data_loader_val, model, device)
-        print(
-            f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
-        )
-        max_accuracy = max(max_accuracy, test_stats["acc1"])
-        print(f"Max accuracy: {max_accuracy:.2f}%")
+        if epoch % 5 == 0:
+            test_stats = evaluate(data_loader_val, model, device, amp_autocast)
+            print(
+                f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
+            )
+            max_accuracy = max(max_accuracy, test_stats["acc1"])
+            print(f"Max accuracy: {max_accuracy:.2f}%")
 
-        log_stats = {
-            **{f"train_{k}": v for k, v in train_stats.items()},
-            **{f"test_{k}": v for k, v in test_stats.items()},
-            "epoch": epoch,
-            "n_parameters": n_parameters,
-        }
+            log_stats = {
+                **{f"train_{k}": v for k, v in train_stats.items()},
+                **{f"test_{k}": v for k, v in test_stats.items()},
+                "epoch": epoch,
+                "n_parameters": n_parameters,
+            }
 
-        if args.output_dir and utils.is_main_process():
-            with (output_dir / "log.txt").open("a") as f:
-                f.write(json.dumps(log_stats) + "\n")
+            if args.output_dir and utils.is_main_process():
+                with (output_dir / "log.txt").open("a") as f:
+                    f.write(json.dumps(log_stats) + "\n")
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
