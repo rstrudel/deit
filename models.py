@@ -253,3 +253,39 @@ def deit_base_distilled_patch16_384(pretrained=False, **kwargs):
         )
         model.load_state_dict(checkpoint["model"])
     return model
+
+
+@register_model
+def deit_base_distilled_patch8_224(pretrained=False, **kwargs):
+    model = DistilledVisionTransformer(
+        patch_size=8,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        **kwargs
+    )
+    model.default_cfg = _cfg()
+    if pretrained:
+        raise ValueError()
+    return model
+
+
+@register_model
+def deit_base_distilled_patch32_224(pretrained=False, **kwargs):
+    model = DistilledVisionTransformer(
+        patch_size=32,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        **kwargs
+    )
+    model.default_cfg = _cfg()
+    if pretrained:
+        raise ValueError()
+    return model
