@@ -49,9 +49,8 @@ def train_one_epoch(
             loss = criterion(samples, outputs, targets)
 
         loss_value = loss.item()
-
         if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
+            print("Loss is {}, stopping training".format(loss_value), force=True)
             sys.exit(1)
 
         optimizer.zero_grad()
