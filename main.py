@@ -386,8 +386,8 @@ def main(args):
 
     print(args)
 
-    if args.distillation_type != "none" and args.finetune and not args.eval:
-        raise NotImplementedError("Finetuning with distillation not yet supported")
+    # if args.distillation_type != "none" and args.finetune and not args.eval:
+    #     raise NotImplementedError("Finetuning with distillation not yet supported")
 
     device = torch.device(args.device)
 
@@ -561,11 +561,20 @@ def main(args):
     if args.distillation_type != "none":
         assert args.teacher_path, "need to specify teacher-path when using distillation"
         print(f"Creating teacher model: {args.teacher_model}")
+        kwargs_teacher = dict()
+        if "regnety" in args.teacher_model:
+            kwargs_teacher = dict(global_pool="avg")
+        elif "deit" in args.teacher_model:
+            kwargs_teacher = dict(
+                drop_rate=args.drop,
+                drop_path_rate=args.drop_path,
+                drop_block_rate=None,
+            )
         teacher_model = create_model(
             args.teacher_model,
             pretrained=False,
             num_classes=args.nb_classes,
-            global_pool="avg",
+            **kwargs_teacher,
         )
         if args.teacher_path.startswith("https"):
             checkpoint = torch.hub.load_state_dict_from_url(
@@ -637,6 +646,7 @@ def main(args):
             mixup_fn,
             set_training_mode=args.finetune
             == "",  # keep in eval mode during finetuning
+            distillation=args.distillation_type != "",
             amp_autocast=amp_autocast,
         )
 

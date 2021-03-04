@@ -58,11 +58,11 @@ class DistilledVisionTransformer(VisionTransformer):
         x = self.norm(x)
         return x[:, 0], x[:, 1]
 
-    def forward(self, x):
+    def forward(self, x, dist=False):
         x, x_dist = self.forward_features(x)
         x = self.head(x)
         x_dist = self.head_dist(x_dist)
-        if self.training:
+        if self.training or dist:
             return x, x_dist
         else:
             # during inference, return the average of both classifier predictions

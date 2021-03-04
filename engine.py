@@ -29,6 +29,7 @@ def train_one_epoch(
     model_ema: Optional[ModelEma] = None,
     mixup_fn: Optional[Mixup] = None,
     set_training_mode=True,
+    distillation=False,
     amp_autocast=suppress,
 ):
     model.train(set_training_mode)
@@ -45,7 +46,7 @@ def train_one_epoch(
             samples, targets = mixup_fn(samples, targets)
 
         with amp_autocast():
-            outputs = model(samples)
+            outputs = model(samples, distillation)
             loss = criterion(samples, outputs, targets)
 
         loss_value = loss.item()
